@@ -7,6 +7,10 @@ import {
   Target
 } from "./compiler";
 
+import {
+  inject
+} from 'genericmodule';
+
 export type ModuleRef = usize;
 export type FunctionTypeRef = usize;
 export type FunctionRef = usize;
@@ -240,6 +244,8 @@ export class Module {
 
   ref: ModuleRef;
   out: usize;
+  globalsCount: i32 = 0;
+  persistentGlobals: Array<Number> = [];
 
   /** Maximum number of pages when targeting WASM32. */
   static readonly MAX_MEMORY_WASM32: Index = 0xffff;
@@ -628,9 +634,14 @@ export class Module {
     name: string,
     type: NativeType,
     mutable: bool,
-    initializer: ExpressionRef
+    initializer: ExpressionRef,
+    isPersistent: bool = false
   ): GlobalRef {
     var cStr = allocString(name);
+    if (isPersistent) {
+      this.persistentGlobals.push(this.globalsCount);
+    }
+    this.globalsCount++;
     try {
       return _BinaryenAddGlobal(this.ref, cStr, type, mutable ? 1 : 0, initializer);
     } finally {
@@ -905,6 +916,12 @@ export class Module {
   }
 
   toBinary(sourceMapUrl: string | null): BinaryModule {
+    // Primea custom section - persistent globals, etc
+    let customJSON = {}
+    if (this.persistentGlobals.length > 0) {
+      customJSON.globals = this.persistentGlobals.map(index => ({ index, type: "buf" }));
+    }
+
     var out = this.out;
     var cStr = allocString(sourceMapUrl);
     var binaryPtr: usize = 0;
@@ -915,7 +932,7 @@ export class Module {
       let binaryBytes = readInt(out + 4);
       sourceMapPtr = readInt(out + 4 * 2);
       let ret = new BinaryModule();
-      ret.output = readBuffer(binaryPtr, binaryBytes);
+      ret.output = inject(readBuffer(binaryPtr, binaryBytes), customJSON);
       ret.sourceMap = readString(sourceMapPtr);
       return ret;
     } finally {

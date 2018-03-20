@@ -107,7 +107,9 @@ import {
   ArrayLiteralExpression,
   StringLiteralExpression,
   UnaryPostfixExpression,
-  UnaryPrefixExpression
+  UnaryPrefixExpression,
+
+  hasDecorator
 } from "./ast";
 
 import {
@@ -592,9 +594,10 @@ export class Compiler extends DiagnosticEmitter {
     }
 
     var internalName = global.internalName;
+    const isPersistent = hasDecorator("persistent", declaration.decorators);
 
     if (initializeInStart) { // initialize to mutable zero and set the actual value in start
-      module.addGlobal(internalName, nativeType, true, global.type.toNativeZero(module));
+      module.addGlobal(internalName, nativeType, true, global.type.toNativeZero(module), isPersistent);
       this.startFunctionBody.push(module.createSetGlobal(internalName, initExpr));
 
     } else { // compile as-is
@@ -638,14 +641,14 @@ export class Compiler extends DiagnosticEmitter {
         }
         global.set(CommonFlags.INLINED); // inline the value from now on
         if (declaration.isTopLevel) {    // but keep the element as it might be re-exported
-          module.addGlobal(internalName, nativeType, false, initExpr);
+          module.addGlobal(internalName, nativeType, false, initExpr, isPersistent);
         }
         if (declaration.range.source.isEntry && declaration.isTopLevelExport) {
           module.addGlobalExport(global.internalName, declaration.programLevelInternalName);
         }
 
       } else /* mutable */ {
-        module.addGlobal(internalName, nativeType, !isConstant, initExpr);
+        module.addGlobal(internalName, nativeType, !isConstant, initExpr, isPersistent);
       }
     }
     return true;

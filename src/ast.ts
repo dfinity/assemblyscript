@@ -216,6 +216,10 @@ export abstract class Node {
           stmt.decoratorKind = DecoratorKind.OFFSET;
           break;
         }
+        case "persistent": {
+          stmt.decoratorKind = DecoratorKind.PERSISTENT;
+          break;
+        }
         default: {
           stmt.decoratorKind = DecoratorKind.CUSTOM;
           break;
@@ -1069,7 +1073,8 @@ export enum DecoratorKind {
   GLOBAL,
   OPERATOR,
   UNMANAGED,
-  OFFSET
+  OFFSET,
+  PERSISTENT
 }
 
 /** Represents a decorator. */
