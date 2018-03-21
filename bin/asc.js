@@ -92,7 +92,7 @@ exports.compileString = (source, extraArgs={}) => new Promise((resolve, reject) 
     const libDir = path.join(__dirname, "../std", "assembly");
     const libFiles = require("glob").sync("**/*.ts", { cwd: libDir });
     libFiles.forEach(file =>
-      exports.libraryFiles["(lib)/" + file.replace(/\.ts$/, "")] = readFileNode(path.join(libDir, file), { encoding: "utf8" })
+      exports.libraryFiles["(lib)/" + file.replace(/\.ts$/, "")] = fs.readFileSync(path.join(libDir, file), { encoding: "utf8" })
     );
   }
 

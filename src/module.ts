@@ -8,8 +8,8 @@ import {
 } from "./compiler";
 
 import {
-  inject
-} from 'genericmodule';
+  encodeAndInject
+} from "primea-annotations";
 
 export type ModuleRef = usize;
 export type FunctionTypeRef = usize;
@@ -245,7 +245,7 @@ export class Module {
   ref: ModuleRef;
   out: usize;
   globalsCount: i32 = 0;
-  persistentGlobals: Array<Number> = [];
+  persistentGlobals: i32[] = [];
 
   /** Maximum number of pages when targeting WASM32. */
   static readonly MAX_MEMORY_WASM32: Index = 0xffff;
@@ -917,10 +917,11 @@ export class Module {
 
   toBinary(sourceMapUrl: string | null): BinaryModule {
     // Primea custom section - persistent globals, etc
-    let customJSON = {}
-    if (this.persistentGlobals.length > 0) {
-      customJSON.globals = this.persistentGlobals.map(index => ({ index, type: "buf" }));
-    }
+    let customJSON: {
+      globals: Array<any> | undefined;
+    } = {
+      globals: this.persistentGlobals.map((index: i32) => ({ index, type: "buf" }))
+    };
 
     var out = this.out;
     var cStr = allocString(sourceMapUrl);
@@ -932,7 +933,7 @@ export class Module {
       let binaryBytes = readInt(out + 4);
       sourceMapPtr = readInt(out + 4 * 2);
       let ret = new BinaryModule();
-      ret.output = inject(readBuffer(binaryPtr, binaryBytes), customJSON);
+      ret.output = encodeAndInject(customJSON, readBuffer(binaryPtr, binaryBytes));
       ret.sourceMap = readString(sourceMapPtr);
       return ret;
     } finally {

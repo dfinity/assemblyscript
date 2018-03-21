@@ -224,6 +224,7 @@ declare class Array<T> {
   slice(from: i32, to?: i32): T[];
   splice(start: i32, deleteCount?: i32): void;
   reverse(): T[];
+  map(pred: Function): T[];
 
   join(delim: string): string;
 }
