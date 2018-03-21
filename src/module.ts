@@ -918,9 +918,13 @@ export class Module {
   toBinary(sourceMapUrl: string | null): BinaryModule {
     // Primea custom section - persistent globals, etc
     let customJSON: {
-      globals: Array<any> | undefined;
+      persist: Array<any> | undefined;
     } = {
-      globals: this.persistentGlobals.map((index: i32) => ({ index, type: "buf" }))
+      persist: this.persistentGlobals.map((index: i32) => ({
+        index,
+        form: "global",
+        type: "data"
+      }))
     };
 
     var out = this.out;
