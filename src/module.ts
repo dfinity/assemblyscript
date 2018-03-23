@@ -246,6 +246,8 @@ export class Module {
   out: usize;
   globalsCount: i32 = 0;
   persistentGlobals: i32[] = [];
+  funcsCount: i32 = 0;
+  customTypeMap: Map<string, i32[]> = new Map();
 
   /** Maximum number of pages when targeting WASM32. */
   static readonly MAX_MEMORY_WASM32: Index = 0xffff;
@@ -653,10 +655,15 @@ export class Module {
     name: string,
     type: FunctionTypeRef,
     varTypes: NativeType[] | null,
-    body: ExpressionRef
+    body: ExpressionRef,
+    customType: string | null = null
   ): FunctionRef {
     var cStr = allocString(name);
     var cArr = allocI32Array(varTypes);
+    if (customType) {
+      this.customTypeMap.set(customType, (this.customTypeMap.get(customType) || []).concat([this.funcsCount]));
+    }
+    this.funcsCount++;
     try {
       return _BinaryenAddFunction(this.ref, cStr, type, cArr, varTypes ? varTypes.length : 0, body);
     } finally {
@@ -918,14 +925,39 @@ export class Module {
   toBinary(sourceMapUrl: string | null): BinaryModule {
     // Primea custom section - persistent globals, etc
     let customJSON: {
-      persist: Array<any> | undefined;
-    } = {
-      persist: this.persistentGlobals.map((index: i32) => ({
+      persist?: Array<any>;
+      types?: Array<any>;
+      typeMap?: Array<any>;
+    } = {};
+
+    if (this.persistentGlobals.length > 0) {
+      customJSON.persist = this.persistentGlobals.map((index: i32) => ({
         index,
         form: "global",
         type: "data"
-      }))
-    };
+      }));
+    }
+
+    if (this.customTypeMap.size > 0) {
+      customJSON.types = [];
+      customJSON.typeMap = [];
+      let typeIndex: i32 = 0;
+
+      for (let paramString of this.customTypeMap.keys()) {
+        customJSON.types.push({
+          form: "func",
+          params: paramString.split(',')
+        });
+        let funcs = this.customTypeMap.get(paramString) || [];
+        customJSON.typeMap = customJSON.typeMap.concat(
+          funcs.map((func: i32) => ({
+            func,
+            type: typeIndex
+          }))
+        );
+        typeIndex++;
+      }
+    }
 
     var out = this.out;
     var cStr = allocString(sourceMapUrl);

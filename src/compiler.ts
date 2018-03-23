@@ -109,7 +109,8 @@ import {
   UnaryPostfixExpression,
   UnaryPrefixExpression,
 
-  hasDecorator
+  hasDecorator,
+  getFirstDecorator
 } from "./ast";
 
 import {
@@ -906,12 +907,19 @@ export class Compiler extends DiagnosticEmitter {
       }
       this.currentFunction = previousFunction;
 
+      const customTypeDecorator = getFirstDecorator("type", declaration.decorators);
+      let customTypes
+      if (customTypeDecorator != null && customTypeDecorator.arguments && customTypeDecorator.arguments.length > 0) {
+        customTypes = customTypeDecorator.arguments.map((expr: IdentifierExpression) => expr.text).join(',')
+      }
+
       // create the function
       ref = module.addFunction(
         instance.internalName,
         typeRef,
         typesToNativeTypes(instance.additionalLocals),
-        stmt
+        stmt,
+        customTypes
       );
 
     } else {

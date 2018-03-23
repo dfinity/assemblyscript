@@ -210,6 +210,10 @@ declare class ArrayBuffer {
   slice(begin?: i32, end?: i32): ArrayBuffer;
 }
 
+interface ArrayConstructor {
+  from(any: any): any[];
+}
+
 declare class Array<T> {
   [key: number]: T;
   length: i32;
@@ -224,7 +228,8 @@ declare class Array<T> {
   slice(from: i32, to?: i32): T[];
   splice(start: i32, deleteCount?: i32): void;
   reverse(): T[];
-  map(pred: Function): T[];
+  map(pred: Function, index?: i32): T[];
+  concat(xs: T[]): T[];
 
   join(delim: string): string;
 }
@@ -254,6 +259,7 @@ declare class String {
   startsWith(subject: string): bool;
   endsWith(subject: string): bool;
   replace(search: string, replacement: string): string;
+  split(by?: string): string[];
   toString(): string;
 }
 
