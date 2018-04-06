@@ -18,7 +18,7 @@ export class String {
 
   @operator("[]")
   charAt(pos: i32): String {
-    assert(this != null);
+    assert(this !== null);
 
     if (<u32>pos >= <u32>this.length) {
       return EMPTY;
@@ -37,7 +37,7 @@ export class String {
   }
 
   charCodeAt(pos: i32): i32 {
-    assert(this != null);
+    assert(this !== null);
     if (<u32>pos >= <u32>this.length) {
       return -1; // (NaN)
     }
@@ -48,7 +48,7 @@ export class String {
   }
 
   codePointAt(pos: i32): i32 {
-    assert(this != null);
+    assert(this !== null);
     if (<u32>pos >= <u32>this.length) {
       return -1; // (undefined)
     }
@@ -63,9 +63,7 @@ export class String {
       changetype<usize>(this) + ((<usize>pos + 1) << 1),
       HEADER_SIZE
     );
-    if (second < 0xDC00 || second > 0xDFFF) {
-      return first;
-    }
+    if (second < 0xDC00 || second > 0xDFFF) return first;
     return ((first - 0xD800) << 10) + (second - 0xDC00) + 0x10000;
   }
 
@@ -76,37 +74,36 @@ export class String {
   }
 
   concat(other: String): String {
-    assert(this != null);
-    if (other == null) other = changetype<String>("null");
+    assert(this !== null);
+    if (other === null) other = changetype<String>("null");
     var thisLen: isize = this.length;
     var otherLen: isize = other.length;
     var outLen: usize = thisLen + otherLen;
     if (outLen == 0) return EMPTY;
     var out = allocate(outLen);
+
     move_memory(
       changetype<usize>(out) + HEADER_SIZE,
       changetype<usize>(this) + HEADER_SIZE,
       thisLen << 1
     );
+
     move_memory(
       changetype<usize>(out) + HEADER_SIZE + (thisLen << 1),
       changetype<usize>(other) + HEADER_SIZE,
       otherLen << 1
     );
+
     return out;
   }
 
   endsWith(searchString: String, endPosition: i32 = 0x7fffffff): bool {
-    assert(this != null);
-    if (searchString == null) {
-      return false;
-    }
+    assert(this !== null);
+    if (searchString === null) return false;
     var end: isize = <isize>min(max(endPosition, 0), this.length);
     var searchLength: isize = searchString.length;
     var start: isize = end - searchLength;
-    if (start < 0) {
-      return false;
-    }
+    if (start < 0) return false;
     return !compare_memory(
       changetype<usize>(this) + HEADER_SIZE + (start << 1),
       changetype<usize>(searchString) + HEADER_SIZE,
@@ -116,10 +113,13 @@ export class String {
 
   @operator("==")
   private static __eq(left: String, right: String): bool {
-    if (!changetype<usize>(left)) return !changetype<usize>(right);
-    else if (!changetype<usize>(right)) return false;
+    if (left === right) return true;
+    if (left === null) return right === null;
+    if (right === null) return false;
+
     var leftLength = left.length;
     if (leftLength != right.length) return false;
+
     return !compare_memory(
       changetype<usize>(left) + HEADER_SIZE,
       changetype<usize>(right) + HEADER_SIZE,
@@ -127,15 +127,92 @@ export class String {
     );
   }
 
+  @operator("!=")
+  private static __ne(left: String, right: String): bool {
+    return !this.__eq(left, right);
+  }
+
+  @operator(">")
+  private static __gt(left: String, right: String): bool {
+    if (left === null || right === null) return false;
+
+    var leftLength  = left.length;
+    var rightLength = right.length;
+
+    if (!leftLength)  return false;
+    if (!rightLength) return true;
+
+    var length = <usize>min<i32>(leftLength, rightLength);
+    return compare_memory(
+      changetype<usize>(left)  + HEADER_SIZE,
+      changetype<usize>(right) + HEADER_SIZE,
+      length << 1
+    ) > 0;
+  }
+
+  @operator(">=")
+  private static __gte(left: String, right: String): bool {
+    if (left === null) return right === null;
+    else if (right === null) return false;
+
+    var leftLength  = left.length;
+    var rightLength = right.length;
+
+    if (!leftLength)  return !rightLength;
+    if (!rightLength) return true;
+
+    var length = <usize>min<i32>(leftLength, rightLength);
+    return compare_memory(
+      changetype<usize>(left)  + HEADER_SIZE,
+      changetype<usize>(right) + HEADER_SIZE,
+      length << 1
+    ) >= 0;
+  }
+
+  @operator("<")
+  private static __lt(left: String, right: String): bool {
+    if (left === null || right === null) return false;
+
+    var leftLength  = left.length;
+    var rightLength = right.length;
+
+    if (!rightLength) return false;
+    if (!leftLength)  return true;
+
+    var length = <usize>min<i32>(leftLength, rightLength);
+    return compare_memory(
+      changetype<usize>(left)  + HEADER_SIZE,
+      changetype<usize>(right) + HEADER_SIZE,
+      length << 1
+    ) < 0;
+  }
+
+  @operator("<=")
+  private static __lte(left: String, right: String): bool {
+    if (left === null) return right === null;
+    else if (right === null) return false;
+
+    var leftLength  = left.length;
+    var rightLength = right.length;
+
+    if (!rightLength) return !leftLength;
+    if (!leftLength)  return true;
+
+    var length = <usize>min<i32>(leftLength, rightLength);
+    return compare_memory(
+      changetype<usize>(left)  + HEADER_SIZE,
+      changetype<usize>(right) + HEADER_SIZE,
+      length << 1
+    ) <= 0;
+  }
+
   includes(searchString: String, position: i32 = 0): bool {
     return this.indexOf(searchString, position) != -1;
   }
 
   indexOf(searchString: String, position: i32 = 0): i32 {
-    assert(this != null);
-    if (searchString == null) {
-      searchString = changetype<String>("null");
-    }
+    assert(this !== null);
+    if (searchString === null) searchString = changetype<String>("null");
     var pos: isize = position;
     var len: isize = this.length;
     var start: isize = min<isize>(max<isize>(pos, 0), len);
@@ -155,10 +232,8 @@ export class String {
   }
 
   startsWith(searchString: String, position: i32 = 0): bool {
-    assert(this != null);
-    if (searchString == null) {
-      searchString = changetype<String>("null");
-    }
+    assert(this !== null);
+    if (searchString === null) searchString = changetype<String>("null");
     var pos: isize = position;
     var len: isize = this.length;
     var start: isize = min<isize>(max<isize>(pos, 0), len);
@@ -174,7 +249,7 @@ export class String {
   }
 
   substr(start: i32, length: i32 = i32.MAX_VALUE): String {
-    assert(this != null);
+    assert(this !== null);
     var intStart: isize = start;
     var end: isize = length;
     var size: isize = this.length;
@@ -195,7 +270,7 @@ export class String {
   }
 
   substring(start: i32, end: i32 = i32.MAX_VALUE): String {
-    assert(this != null);
+    assert(this !== null);
     var len = this.length;
     var finalStart = min<i32>(max<i32>(start, 0), len);
     var finalEnd = min<i32>(max<i32>(end, 0), len);
@@ -218,7 +293,7 @@ export class String {
   }
 
   trim(): String {
-    assert(this != null);
+    assert(this !== null);
     var length: usize = this.length;
     while (
       length &&
@@ -253,7 +328,7 @@ export class String {
   }
 
   trimLeft(): String {
-    assert(this != null);
+    assert(this !== null);
     var start: isize = 0;
     var len: isize = this.length;
     while (
@@ -281,7 +356,7 @@ export class String {
   }
 
   trimRight(): String {
-    assert(this != null);
+    assert(this !== null);
     var len: isize = this.length;
     while (
       len > 0 &&
@@ -444,6 +519,7 @@ function parse<T>(str: String, radix: i32 = 0): T {
   return sign * num;
 }
 
+// FIXME: naive implementation
 export function parseFloat(str: String): f64 {
   var len: i32 = str.length;
   if (!len) {

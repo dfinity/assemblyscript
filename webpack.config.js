@@ -39,10 +39,12 @@ const bin = {
     "../dist/assemblyscript.js": "assemblyscript"
   }],
   node: {
+    "buffer": false,
     "fs": "empty",
     "global": true,
+    "os": false,
     "process": "mock",
-    "crypto": "empty"
+    "crypto": false
   },
   output: {
     filename: "asc.js",
@@ -52,6 +54,9 @@ const bin = {
     globalObject: "typeof self !== 'undefined' ? self : this"
   },
   devtool: "source-map",
+  performance: {
+    hints : false
+  },
   plugins: [
     new webpack.DefinePlugin({
       BUNDLE_VERSION: JSON.stringify(require("./package.json").version),
@@ -59,7 +64,7 @@ const bin = {
         const libDir = path.join(__dirname, "std", "assembly");
         const libFiles = require("glob").sync("**/*.ts", { cwd: libDir });
         const lib = {};
-        libFiles.forEach(file => lib["(lib)/" + file.replace(/\.ts$/, "")] = bundleFile(path.join(libDir, file)));
+        libFiles.forEach(file => lib[file.replace(/\.ts$/, "")] = bundleFile(path.join(libDir, file)));
         return lib;
       })(),
       BUNDLE_DEFINITIONS: {

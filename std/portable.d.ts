@@ -193,6 +193,10 @@ declare function parseInt(str: string, radix?: i32): f64;
 declare function parseI32(str: string, radix?: i32): i32;
 /** Parses a floating point string to a 64-bit float. */
 declare function parseFloat(str: string): f64;
+/** Returns the 64-bit floating-point remainder of `x/y`. */
+declare function fmod(x: f64, y: f64): f64;
+/** Returns the 32-bit floating-point remainder of `x/y`. */
+declare function fmodf(x: f32, y: f32): f32;
 
 // Portable standard library
 // Everything marked @deprecated is a temporary filler. Do not use.
@@ -218,17 +222,22 @@ declare class Array<T> {
   [key: number]: T;
   length: i32;
   constructor(capacity?: i32);
+  every(callbackfn: (element: T, index: i32, array?: Array<T>) => bool): bool;
+  findIndex(predicate: (element: T, index: i32, array?: Array<T>) => bool): i32;
   includes(searchElement: T, fromIndex?: i32): bool;
   indexOf(searchElement: T, fromIndex?: i32): i32;
   lastIndexOf(searchElement: T, fromIndex?: i32): i32;
   push(element: T): void;
   pop(): T;
+  reduce<U>(callbackfn: (previousValue: U, currentValue: T, currentIndex: i32, array: Array<T>) => U, initialValue: U): U;
   shift(): T;
+  some(callbackfn: (element: T, index: i32, array?: Array<T>) => bool): bool;
   unshift(element: T): i32;
   slice(from: i32, to?: i32): T[];
   splice(start: i32, deleteCount?: i32): void;
   reverse(): T[];
-  map(pred: Function, index?: i32): T[];
+  sort(comparator?: (a: T, b: T) => i32): T[];
+  map(pred: Function): T[];
   concat(xs: T[]): T[];
 
   join(delim: string): string;
@@ -316,6 +325,56 @@ interface Iterable<T> {
 }
 
 interface Iterator<T> {}
+
+interface IMath {
+  readonly E: f64;
+  readonly LN2: f64;
+  readonly LN10: f64;
+  readonly LOG2E: f64;
+  readonly LOG10E: f64;
+  readonly PI: f64;
+  readonly SQRT1_2: f64;
+  readonly SQRT2: f64;
+  abs(x: f64): f64;
+  acos(x: f64): f64;
+  acosh(x: f64): f64;
+  asin(x: f64): f64;
+  asinh(x: f64): f64;
+  atan(x: f64): f64;
+  atan2(y: f64, x: f64): f64;
+  atanh(x: f64): f64;
+  cbrt(x: f64): f64;
+  ceil(x: f64): f64;
+  clz32(x: f64): i32;
+  cos(x: f64): f64;
+  cosh(x: f64): f64;
+  exp(x: f64): f64;
+  expm1(x: f64): f64;
+  floor(x: f64): f64;
+  fround(x: f64): f32;
+  hypot(value1: f64, value2: f64): f64; // TODO: see std/math
+  imul(a: f64, b: f64): i32;
+  log(x: f64): f64;
+  log10(x: f64): f64;
+  log1p(x: f64): f64;
+  log2(x: f64): f64;
+  max(value1: f64, value2: f64): f64; // TODO: see std/math
+  min(value1: f64, value2: f64): f64; // TODO: see std/math
+  pow(base: f64, exponent: f64): f64;
+  random(): f64;
+  round(x: f64): f64;
+  sign(x: f64): f64;
+  sin(x: f64): f64;
+  sinh(x: f64): f64;
+  sqrt(x: f64): f64;
+  tan(x: f64): f64;
+  tanh(x: f64): f64;
+  trunc(x: f64): f64;
+}
+
+declare const Math: IMath;
+declare const Mathf: IMath;
+declare const JSMath: IMath;
 
 declare namespace console {
   /** @deprecated */

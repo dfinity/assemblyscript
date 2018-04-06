@@ -64,6 +64,7 @@ export enum DiagnosticCode {
   Declaration_expected = 1146,
   _const_declarations_must_be_initialized = 1155,
   Unterminated_regular_expression_literal = 1161,
+  Interface_declaration_cannot_have_implements_clause = 1176,
   Binary_digit_expected = 1177,
   Octal_digit_expected = 1178,
   An_implementation_cannot_be_declared_in_ambient_contexts = 1183,
@@ -72,6 +73,7 @@ export enum DiagnosticCode {
   Decorators_are_not_valid_here = 1206,
   _abstract_modifier_can_only_appear_on_a_class_method_or_property_declaration = 1242,
   A_class_may_only_extend_another_class = 1311,
+  A_parameter_property_cannot_be_declared_using_a_rest_parameter = 1317,
   Duplicate_identifier_0 = 2300,
   Cannot_find_name_0 = 2304,
   Module_0_has_no_exported_member_1 = 2305,
@@ -94,6 +96,7 @@ export enum DiagnosticCode {
   Multiple_constructor_implementations_are_not_allowed = 2392,
   Duplicate_function_implementation = 2393,
   Individual_declarations_in_merged_declaration_0_must_be_all_exported_or_all_local = 2395,
+  Type_0_has_no_property_1 = 2460,
   The_0_operator_cannot_be_applied_to_type_1 = 2469,
   Export_declaration_conflicts_with_exported_declaration_of_0 = 2484,
   Cannot_assign_to_0_because_it_is_a_constant_or_a_read_only_property = 2540,
@@ -167,6 +170,7 @@ export function diagnosticCodeToString(code: DiagnosticCode): string {
     case 1146: return "Declaration expected.";
     case 1155: return "'const' declarations must be initialized.";
     case 1161: return "Unterminated regular expression literal.";
+    case 1176: return "Interface declaration cannot have 'implements' clause.";
     case 1177: return "Binary digit expected.";
     case 1178: return "Octal digit expected.";
     case 1183: return "An implementation cannot be declared in ambient contexts.";
@@ -175,6 +179,7 @@ export function diagnosticCodeToString(code: DiagnosticCode): string {
     case 1206: return "Decorators are not valid here.";
     case 1242: return "'abstract' modifier can only appear on a class, method, or property declaration.";
     case 1311: return "A class may only extend another class.";
+    case 1317: return "A parameter property cannot be declared using a rest parameter.";
     case 2300: return "Duplicate identifier '{0}'.";
     case 2304: return "Cannot find name '{0}'.";
     case 2305: return "Module '{0}' has no exported member '{1}'.";
@@ -197,6 +202,7 @@ export function diagnosticCodeToString(code: DiagnosticCode): string {
     case 2392: return "Multiple constructor implementations are not allowed.";
     case 2393: return "Duplicate function implementation.";
     case 2395: return "Individual declarations in merged declaration '{0}' must be all exported or all local.";
+    case 2460: return "Type '{0}' has no property '{1}'.";
     case 2469: return "The '{0}' operator cannot be applied to type '{1}'.";
     case 2484: return "Export declaration conflicts with exported declaration of '{0}'.";
     case 2540: return "Cannot assign to '{0}' because it is a constant or a read-only property.";

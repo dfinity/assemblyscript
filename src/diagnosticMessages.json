@@ -57,6 +57,7 @@
   "Declaration expected.": 1146,
   "'const' declarations must be initialized.": 1155,
   "Unterminated regular expression literal.": 1161,
+  "Interface declaration cannot have 'implements' clause.": 1176,
   "Binary digit expected.": 1177,
   "Octal digit expected.": 1178,
   "An implementation cannot be declared in ambient contexts.": 1183,
@@ -65,6 +66,7 @@
   "Decorators are not valid here.": 1206,
   "'abstract' modifier can only appear on a class, method, or property declaration.": 1242,
   "A class may only extend another class.": 1311,
+  "A parameter property cannot be declared using a rest parameter.": 1317,
 
   "Duplicate identifier '{0}'.": 2300,
   "Cannot find name '{0}'.": 2304,
@@ -88,6 +90,7 @@
   "Multiple constructor implementations are not allowed.": 2392,
   "Duplicate function implementation.": 2393,
   "Individual declarations in merged declaration '{0}' must be all exported or all local.": 2395,
+  "Type '{0}' has no property '{1}'.": 2460,
   "The '{0}' operator cannot be applied to type '{1}'.": 2469,
   "Export declaration conflicts with exported declaration of '{0}'.": 2484,
   "Cannot assign to '{0}' because it is a constant or a read-only property.": 2540,

@@ -63,7 +63,8 @@ import {
   VariableStatement,
 
   ParameterKind,
-  SignatureNode
+  SignatureNode,
+  VariableDeclaration
 } from "./ast";
 
 import {
@@ -85,7 +86,7 @@ export const INSTANCE_DELIMITER = "#";
 /** Delimiter used between class and namespace names and static members. */
 export const STATIC_DELIMITER = ".";
 /** Substitution used to indicate a library directory. */
-export const LIBRARY_SUBST = "(lib)";
+export const LIBRARY_SUBST = "~lib";
 /** Library directory prefix. */
 export const LIBRARY_PREFIX = LIBRARY_SUBST + PATH_DELIMITER;
 
@@ -131,6 +132,15 @@ export class Program extends DiagnosticEmitter {
   fileLevelExports: Map<string,Element> = new Map();
   /** Module-level exports by exported name. */
   moduleLevelExports: Map<string,Element> = new Map();
+  /** Array prototype reference. */
+  arrayPrototype: ClassPrototype | null = null;
+  /** String instance reference. */
+  stringInstance: Class | null = null;
+
+  /** Target expression of the previously resolved property or element access. */
+  resolvedThisExpression: Expression | null = null;
+  /** Element expression of the previously resolved element access. */
+  resolvedElementExpression : Expression | null = null;
 
   /** Constructs a new program, optionally inheriting parser diagnostics. */
   constructor(diagnostics: DiagnosticMessage[] | null = null) {
@@ -284,18 +294,50 @@ export class Program extends DiagnosticEmitter {
     for (let i = 0, k = queuedDerivedClasses.length; i < k; ++i) {
       let derivedDeclaration = queuedDerivedClasses[i].declaration;
       let derivedType = assert(derivedDeclaration.extendsType);
-      let resolved = this.resolveIdentifier(derivedType.name, null);
-      if (resolved) {
-        if (resolved.element.kind != ElementKind.CLASS_PROTOTYPE) {
-          this.error(
-            DiagnosticCode.A_class_may_only_extend_another_class,
-            derivedType.range
-          );
-          continue;
-        }
-        queuedDerivedClasses[i].basePrototype = (
-          <ClassPrototype>resolved.element
+      let derived = this.resolveIdentifier(derivedType.name, null); // reports
+      if (!derived) continue;
+      if (derived.kind == ElementKind.CLASS_PROTOTYPE) {
+        queuedDerivedClasses[i].basePrototype = <ClassPrototype>derived;
+      } else {
+        this.error(
+          DiagnosticCode.A_class_may_only_extend_another_class,
+          derivedType.range
         );
+      }
+    }
+
+    // set up global aliases
+    var globalAliases = options.globalAliases;
+    if (globalAliases) {
+      for (let [alias, name] of globalAliases) {
+        let element = this.elementsLookup.get(name); // TODO: error? has no source range
+        if (element) this.elementsLookup.set(alias, element);
+      }
+    }
+
+    // register array
+    var arrayPrototype = this.elementsLookup.get("Array");
+    if (arrayPrototype) {
+      assert(arrayPrototype.kind == ElementKind.CLASS_PROTOTYPE);
+      this.arrayPrototype = <ClassPrototype>arrayPrototype;
+    }
+
+    // register string
+    var stringPrototype = this.elementsLookup.get("String");
+    if (stringPrototype) {
+      assert(stringPrototype.kind == ElementKind.CLASS_PROTOTYPE);
+      let stringInstance = (<ClassPrototype>stringPrototype).resolve(null); // reports
+      if (stringInstance) {
+        if (this.typesLookup.has("string")) {
+          let declaration = (<ClassPrototype>stringPrototype).declaration;
+          this.error(
+            DiagnosticCode.Duplicate_identifier_0,
+            declaration.name.range, declaration.programLevelInternalName
+          );
+        } else {
+          this.stringInstance = stringInstance;
+          this.typesLookup.set("string", stringInstance.type);
+        }
       }
     }
   }
@@ -319,8 +361,8 @@ export class Program extends DiagnosticEmitter {
     } while (true);
   }
 
-  /** Processes internal decorators, if present. */
-  private checkInternalDecorators(
+  /** Processes global options, if present. */
+  private checkGlobalOptions(
     element: Element,
     declaration: DeclarationStatement
   ): void {
@@ -378,23 +420,25 @@ export class Program extends DiagnosticEmitter {
     this.elementsLookup.set(internalName, prototype);
 
     var implementsTypes = declaration.implementsTypes;
-    var numImplementsTypes = implementsTypes.length;
-    if (prototype.is(CommonFlags.UNMANAGED)) {
-      if (implementsTypes && numImplementsTypes) {
-        this.error(
-          DiagnosticCode.Structs_cannot_implement_interfaces,
-          Range.join(
-            declaration.name.range,
-            implementsTypes[numImplementsTypes - 1].range
-          )
-        );
-      }
-    } else if (numImplementsTypes) {
-      for (let i = 0; i < numImplementsTypes; ++i) {
-        this.error(
-          DiagnosticCode.Operation_not_supported,
-          implementsTypes[i].range
-        );
+    if (implementsTypes) {
+      let numImplementsTypes = implementsTypes.length;
+      if (prototype.is(CommonFlags.UNMANAGED)) {
+        if (numImplementsTypes) {
+          this.error(
+            DiagnosticCode.Structs_cannot_implement_interfaces,
+            Range.join(
+              declaration.name.range,
+              implementsTypes[numImplementsTypes - 1].range
+            )
+          );
+        }
+      } else if (numImplementsTypes) {
+        for (let i = 0; i < numImplementsTypes; ++i) {
+          this.error(
+            DiagnosticCode.Operation_not_supported,
+            implementsTypes[i].range
+          );
+        }
       }
     }
 
@@ -469,23 +513,7 @@ export class Program extends DiagnosticEmitter {
       }
     }
 
-    this.checkInternalDecorators(prototype, declaration);
-
-    // check and possibly register string type
-    if (
-      prototype.is(CommonFlags.GLOBAL) &&
-      declaration.name.text == "String"
-    ) {
-      if (!this.typesLookup.has("string")) {
-        let instance = prototype.resolve(null);
-        if (instance) this.typesLookup.set("string", instance.type);
-      } else {
-        this.error(
-          DiagnosticCode.Duplicate_identifier_0,
-          declaration.name.range, declaration.programLevelInternalName
-        );
-      }
-    }
+    this.checkGlobalOptions(prototype, declaration);
   }
 
   private initializeField(
@@ -519,8 +547,8 @@ export class Program extends DiagnosticEmitter {
         this,
         name,
         internalName,
-        declaration,
-        Type.void
+        Type.void, // resolved later on
+        declaration
       );
       classPrototype.members.set(name, staticField);
       this.elementsLookup.set(internalName, staticField);
@@ -675,8 +703,56 @@ export class Program extends DiagnosticEmitter {
                   classPrototype.fnConcat = prototype.simpleName;
                   break;
                 }
+                case "-": {
+                  classPrototype.fnSubtract = prototype.simpleName;
+                  break;
+                }
+                case "*": {
+                  classPrototype.fnMultiply = prototype.simpleName;
+                  break;
+                }
+                case "/": {
+                  classPrototype.fnDivide = prototype.simpleName;
+                  break;
+                }
+                case "%": {
+                  classPrototype.fnFractional = prototype.simpleName;
+                  break;
+                }
+                case "&": {
+                  classPrototype.fnBitwiseAnd = prototype.simpleName;
+                  break;
+                }
+                case "|": {
+                  classPrototype.fnBitwiseOr = prototype.simpleName;
+                  break;
+                }
+                case "^": {
+                  classPrototype.fnBitwiseXor = prototype.simpleName;
+                  break;
+                }
                 case "==": {
                   classPrototype.fnEquals = prototype.simpleName;
+                  break;
+                }
+                case "!=": {
+                  classPrototype.fnNotEquals = prototype.simpleName;
+                  break;
+                }
+                case ">": {
+                  classPrototype.fnGreaterThan = prototype.simpleName;
+                  break;
+                }
+                case ">=": {
+                  classPrototype.fnGreaterThanEquals = prototype.simpleName;
+                  break;
+                }
+                case "<": {
+                  classPrototype.fnLessThan = prototype.simpleName;
+                  break;
+                }
+                case "<=": {
+                  classPrototype.fnLessThanEquals = prototype.simpleName;
                   break;
                 }
                 default: {
@@ -881,7 +957,7 @@ export class Program extends DiagnosticEmitter {
       this.initializeEnumValue(values[i], element);
     }
 
-    this.checkInternalDecorators(element, declaration);
+    this.checkGlobalOptions(element, declaration);
   }
 
   private initializeEnumValue(
@@ -1105,7 +1181,7 @@ export class Program extends DiagnosticEmitter {
       }
     }
 
-    this.checkInternalDecorators(prototype, declaration);
+    this.checkGlobalOptions(prototype, declaration);
   }
 
   private initializeImports(
@@ -1264,7 +1340,7 @@ export class Program extends DiagnosticEmitter {
       }
     }
 
-    this.checkInternalDecorators(prototype, declaration);
+    this.checkGlobalOptions(prototype, declaration);
   }
 
   private initializeNamespace(
@@ -1279,7 +1355,7 @@ export class Program extends DiagnosticEmitter {
       namespace = new Namespace(this, simpleName, internalName, declaration);
       namespace.namespace = parentNamespace;
       this.elementsLookup.set(internalName, namespace);
-      this.checkInternalDecorators(namespace, declaration);
+      this.checkGlobalOptions(namespace, declaration);
     }
 
     if (parentNamespace) {
@@ -1401,8 +1477,8 @@ export class Program extends DiagnosticEmitter {
         this,
         simpleName,
         internalName,
-        declaration,
-        Type.void // resolved later on
+        Type.void, // resolved later on
+        declaration
       );
       global.namespace = namespace;
       this.elementsLookup.set(internalName, global);
@@ -1444,7 +1520,7 @@ export class Program extends DiagnosticEmitter {
           this.moduleLevelExports.set(internalName, global);
         }
       }
-      this.checkInternalDecorators(global, declaration);
+      this.checkGlobalOptions(global, declaration);
     }
   }
 
@@ -1635,7 +1711,7 @@ export class Program extends DiagnosticEmitter {
     identifier: IdentifierExpression,
     contextualFunction: Function | null,
     contextualEnum: Enum | null = null
-  ): ResolvedElement | null {
+  ): Element | null {
     var name = identifier.text;
 
     var element: Element | null;
@@ -1649,24 +1725,40 @@ export class Program extends DiagnosticEmitter {
         (element = contextualEnum.members.get(name)) &&
         element.kind == ElementKind.ENUMVALUE
       ) {
-        if (!resolvedElement) resolvedElement = new ResolvedElement();
-        return resolvedElement.set(element);
+        this.resolvedThisExpression = null;
+        this.resolvedElementExpression = null;
+        return element; // ENUMVALUE
       }
 
     } else if (contextualFunction) {
 
       // check locals
       if (element = contextualFunction.flow.getScopedLocal(name)) {
-        if (!resolvedElement) resolvedElement = new ResolvedElement();
-        return resolvedElement.set(element);
+        this.resolvedThisExpression = null;
+        this.resolvedElementExpression = null;
+        return element; // LOCAL
       }
+
+      // check outer scope locals
+      // let outerScope = contextualFunction.outerScope;
+      // while (outerScope) {
+      //   if (element = outerScope.getScopedLocal(name)) {
+      //     let scopedLocal = <Local>element;
+      //     let scopedGlobal = scopedLocal.scopedGlobal;
+      //     if (!scopedGlobal) scopedGlobal = outerScope.addScopedGlobal(scopedLocal);
+      //     if (!resolvedElement) resolvedElement = new ResolvedElement();
+      //     return resolvedElement.set(scopedGlobal);
+      //   }
+      //   outerScope = outerScope.currentFunction.outerScope;
+      // }
 
       // search contextual parent namespaces if applicable
       if (namespace = contextualFunction.prototype.namespace) {
         do {
           if (element = this.elementsLookup.get(namespace.internalName + STATIC_DELIMITER + name)) {
-            if (!resolvedElement) resolvedElement = new ResolvedElement();
-            return resolvedElement.set(element);
+            this.resolvedThisExpression = null;
+            this.resolvedElementExpression = null;
+            return element; // LOCAL
           }
         } while (namespace = namespace.namespace);
       }
@@ -1674,14 +1766,16 @@ export class Program extends DiagnosticEmitter {
 
     // search current file
     if (element = this.elementsLookup.get(identifier.range.source.internalPath + PATH_DELIMITER + name)) {
-      if (!resolvedElement) resolvedElement = new ResolvedElement();
-      return resolvedElement.set(element);
+      this.resolvedThisExpression = null;
+      this.resolvedElementExpression = null;
+      return element; // GLOBAL, FUNCTION_PROTOTYPE, CLASS_PROTOTYPE
     }
 
     // search global scope
     if (element = this.elementsLookup.get(name)) {
-      if (!resolvedElement) resolvedElement = new ResolvedElement();
-      return resolvedElement.set(element);
+      this.resolvedThisExpression = null;
+      this.resolvedElementExpression = null;
+      return element; // GLOBAL, FUNCTION_PROTOTYPE, CLASS_PROTOTYPE
     }
 
     this.error(
@@ -1695,47 +1789,63 @@ export class Program extends DiagnosticEmitter {
   resolvePropertyAccess(
     propertyAccess: PropertyAccessExpression,
     contextualFunction: Function
-  ): ResolvedElement | null {
+  ): Element | null {
     // start by resolving the lhs target (expression before the last dot)
     var targetExpression = propertyAccess.expression;
-    resolvedElement = this.resolveExpression( // reports
-      targetExpression,
-      contextualFunction
-    );
-    if (!resolvedElement) return null;
-    var target = resolvedElement.element;
+    var target = this.resolveExpression(targetExpression, contextualFunction); // reports
+    if (!target) return null;
 
     // at this point we know exactly what the target is, so look up the element within
     var propertyName = propertyAccess.property.text;
-    var targetType: Type;
-    var member: Element | null;
 
-    // Resolve variable-likes to their class type first
+    // Resolve variable-likes to the class type they reference first
     switch (target.kind) {
       case ElementKind.GLOBAL:
       case ElementKind.LOCAL:
       case ElementKind.FIELD: {
-        if (!(targetType = (<VariableLikeElement>target).type).classReference) {
+        let classReference = (<VariableLikeElement>target).type.classReference;
+        if (!classReference) {
           this.error(
             DiagnosticCode.Property_0_does_not_exist_on_type_1,
-            propertyAccess.property.range, propertyName, targetType.toString()
+            propertyAccess.property.range, propertyName, (<VariableLikeElement>target).type.toString()
           );
           return null;
         }
-        target = <Class>targetType.classReference;
+        target = classReference;
         break;
       }
       case ElementKind.PROPERTY: {
         let getter = assert((<Property>target).getterPrototype).resolve(); // reports
         if (!getter) return null;
-        if (!(targetType = getter.signature.returnType).classReference) {
+        let classReference = getter.signature.returnType.classReference;
+        if (!classReference) {
           this.error(
             DiagnosticCode.Property_0_does_not_exist_on_type_1,
-            propertyAccess.property.range, propertyName, targetType.toString()
+            propertyAccess.property.range, propertyName, getter.signature.returnType.toString()
           );
           return null;
         }
-        target = <Class>targetType.classReference;
+        target = classReference;
+        break;
+      }
+      case ElementKind.CLASS: {
+        let elementExpression = this.resolvedElementExpression;
+        if (elementExpression) {
+          let indexedGetPrototype = (<Class>target).getIndexedGet();
+          if (indexedGetPrototype) {
+            let indexedGetInstance = indexedGetPrototype.resolve(); // reports
+            if (!indexedGetInstance) return null;
+            let classReference = indexedGetInstance.signature.returnType.classReference;
+            if (!classReference) {
+              this.error(
+                DiagnosticCode.Property_0_does_not_exist_on_type_1,
+                propertyAccess.property.range, propertyName, (<VariableLikeElement>target).type.toString()
+              );
+              return null;
+            }
+            target = classReference;
+          }
+        }
         break;
       }
     }
@@ -1745,17 +1855,21 @@ export class Program extends DiagnosticEmitter {
       case ElementKind.CLASS_PROTOTYPE:
       case ElementKind.CLASS: {
         do {
-          if (target.members && (member = target.members.get(propertyName))) {
-            return resolvedElement.set(member).withTarget(target, targetExpression);
+          let members = target.members;
+          let member: Element | null;
+          if (members && (member = members.get(propertyName))) {
+            this.resolvedThisExpression = targetExpression;
+            this.resolvedElementExpression = null;
+            return member; // instance FIELD, static GLOBAL, FUNCTION_PROTOTYPE...
           }
-          // check inherited static members on the base prototype while target is a class prototype
+          // traverse inherited static members on the base prototype if target is a class prototype
           if (target.kind == ElementKind.CLASS_PROTOTYPE) {
             if ((<ClassPrototype>target).basePrototype) {
               target = <ClassPrototype>(<ClassPrototype>target).basePrototype;
             } else {
               break;
             }
-          // or inherited instance members on the base class while target is a class instance
+          // traverse inherited instance members on the base class if target is a class instance
           } else if (target.kind == ElementKind.CLASS) {
             if ((<Class>target).base) {
               target = <Class>(<Class>target).base;
@@ -1769,8 +1883,12 @@ export class Program extends DiagnosticEmitter {
         break;
       }
       default: { // enums or other namespace-like elements
-        if (target.members && (member = target.members.get(propertyName))) {
-          return resolvedElement.set(member).withTarget(target, targetExpression);
+        let members = target.members;
+        let member: Element | null;
+        if (members && (member = members.get(propertyName))) {
+          this.resolvedThisExpression = targetExpression;
+          this.resolvedElementExpression = null;
+          return member; // static ENUMVALUE, static GLOBAL, static FUNCTION_PROTOTYPE...
         }
         break;
       }
@@ -1785,38 +1903,41 @@ export class Program extends DiagnosticEmitter {
   resolveElementAccess(
     elementAccess: ElementAccessExpression,
     contextualFunction: Function
-  ): ResolvedElement | null {
-    // start by resolving the lhs target (expression before the last dot)
+  ): Element | null {
     var targetExpression = elementAccess.expression;
-    resolvedElement = this.resolveExpression(
-      targetExpression,
-      contextualFunction
-    );
-    if (!resolvedElement) return null;
-    var target = resolvedElement.element;
+    var target = this.resolveExpression(targetExpression, contextualFunction);
+    if (!target) return null;
     switch (target.kind) {
       case ElementKind.GLOBAL:
       case ElementKind.LOCAL:
       case ElementKind.FIELD: {
+        assert(!this.resolvedThisExpression && !this.resolvedElementExpression);
         let type = (<VariableLikeElement>target).type;
-        if (type.classReference) {
-          let indexedGetName = (target = type.classReference).prototype.fnIndexedGet;
-          let indexedGet: Element | null;
-          if (
-            indexedGetName != null &&
-            target.members &&
-            (indexedGet = target.members.get(indexedGetName)) &&
-            indexedGet.kind == ElementKind.FUNCTION_PROTOTYPE
-          ) {
-            return resolvedElement.set(indexedGet).withTarget(type.classReference, targetExpression);
+        if (target = type.classReference) {
+          this.resolvedThisExpression = targetExpression;
+          this.resolvedElementExpression = elementAccess.elementExpression;
+          return target;
+        }
+        break;
+      }
+      case ElementKind.CLASS: { // element access on element access
+        let indexedGetPrototype = (<Class>target).getIndexedGet();
+        if (indexedGetPrototype) {
+          let indexedGetInstance = indexedGetPrototype.resolve(); // reports
+          if (!indexedGetInstance) return null;
+          let returnType = indexedGetInstance.signature.returnType;
+          if (target = returnType.classReference) {
+            this.resolvedThisExpression = targetExpression;
+            this.resolvedElementExpression = elementAccess.elementExpression;
+            return target;
           }
         }
         break;
       }
     }
     this.error(
-      DiagnosticCode.Index_signature_is_missing_in_type_0,
-      targetExpression.range, target.internalName
+      DiagnosticCode.Operation_not_supported,
+      targetExpression.range
     );
     return null;
   }
@@ -1824,7 +1945,7 @@ export class Program extends DiagnosticEmitter {
   resolveExpression(
     expression: Expression,
     contextualFunction: Function
-  ): ResolvedElement | null {
+  ): Element | null {
     while (expression.kind == NodeKind.PARENTHESIZED) {
       expression = (<ParenthesizedExpression>expression).expression;
     }
@@ -1834,8 +1955,9 @@ export class Program extends DiagnosticEmitter {
         if (type) {
           let classType = type.classReference;
           if (classType) {
-            if (!resolvedElement) resolvedElement = new ResolvedElement();
-            return resolvedElement.set(classType);
+            this.resolvedThisExpression = null;
+            this.resolvedElementExpression = null;
+            return classType;
           }
         }
         return null;
@@ -1846,8 +1968,9 @@ export class Program extends DiagnosticEmitter {
       case NodeKind.THIS: { // -> Class / ClassPrototype
         let parent = contextualFunction.memberOf;
         if (parent) {
-          if (!resolvedElement) resolvedElement = new ResolvedElement();
-          return resolvedElement.set(parent);
+          this.resolvedThisExpression = null;
+          this.resolvedElementExpression = null;
+          return parent;
         }
         this.error(
           DiagnosticCode._this_cannot_be_referenced_in_current_location,
@@ -1858,8 +1981,9 @@ export class Program extends DiagnosticEmitter {
       case NodeKind.SUPER: { // -> Class
         let parent = contextualFunction.memberOf;
         if (parent && parent.kind == ElementKind.CLASS && (parent = (<Class>parent).base)) {
-          if (!resolvedElement) resolvedElement = new ResolvedElement();
-          return resolvedElement.set(parent);
+          this.resolvedThisExpression = null;
+          this.resolvedElementExpression = null;
+          return parent;
         }
         this.error(
           DiagnosticCode._super_can_only_be_referenced_in_a_derived_class,
@@ -1869,6 +1993,17 @@ export class Program extends DiagnosticEmitter {
       }
       case NodeKind.IDENTIFIER: {
         return this.resolveIdentifier(<IdentifierExpression>expression, contextualFunction);
+      }
+      case NodeKind.LITERAL: {
+        switch ((<LiteralExpression>expression).literalKind) {
+          case LiteralKind.STRING: {
+            this.resolvedThisExpression = expression;
+            this.resolvedElementExpression = null;
+            return this.stringInstance;
+          }
+          // case LiteralKind.ARRAY: // TODO
+        }
+        break;
       }
       case NodeKind.PROPERTYACCESS: {
         return this.resolvePropertyAccess(
@@ -1883,38 +2018,40 @@ export class Program extends DiagnosticEmitter {
         );
       }
       case NodeKind.CALL: {
-        let resolved = this.resolveExpression(
-          (<CallExpression>expression).expression,
-          contextualFunction
-        );
-        if (resolved) {
-          let element = resolved.element;
-          if (element && element.kind == ElementKind.FUNCTION_PROTOTYPE) {
-            let instance = (<FunctionPrototype>element).resolveUsingTypeArguments(
-              (<CallExpression>expression).typeArguments,
-              contextualFunction.contextualTypeArguments,
-              expression
-            );
-            if (instance) {
-              let returnType = instance.signature.returnType;
-              let classType = returnType.classReference;
-              if (classType) {
-                if (!resolvedElement) resolvedElement = new ResolvedElement();
-                return resolvedElement.set(classType);
-              } else {
-                let signature = returnType.signatureReference;
-                if (signature) {
-                  let functionTarget = signature.cachedFunctionTarget;
-                  if (!functionTarget) {
-                    functionTarget = new FunctionTarget(this, signature);
-                    signature.cachedFunctionTarget = functionTarget;
-                  }
-                  if (!resolvedElement) resolvedElement = new ResolvedElement();
-                  return resolvedElement.set(functionTarget);
-                }
+        let targetExpression = (<CallExpression>expression).expression;
+        let target = this.resolveExpression(targetExpression, contextualFunction); // reports
+        if (!target) return null;
+        if (target.kind == ElementKind.FUNCTION_PROTOTYPE) {
+          let instance = (<FunctionPrototype>target).resolveUsingTypeArguments( // reports
+            (<CallExpression>expression).typeArguments,
+            contextualFunction.contextualTypeArguments,
+            expression
+          );
+          if (!instance) return null;
+          let returnType = instance.signature.returnType;
+          let classType = returnType.classReference;
+          if (classType) {
+            // reuse resolvedThisExpression (might be property access)
+            // reuse resolvedElementExpression (might be element access)
+            return classType;
+          } else {
+            let signature = returnType.signatureReference;
+            if (signature) {
+              let functionTarget = signature.cachedFunctionTarget;
+              if (!functionTarget) {
+                functionTarget = new FunctionTarget(this, signature);
+                signature.cachedFunctionTarget = functionTarget;
               }
+              // reuse resolvedThisExpression (might be property access)
+              // reuse resolvedElementExpression (might be element access)
+              return functionTarget;
             }
           }
+          this.error(
+            DiagnosticCode.Cannot_invoke_an_expression_whose_type_lacks_a_call_signature_Type_0_has_no_compatible_call_signatures,
+            targetExpression.range, target.internalName
+          );
+          return null;
         }
         break;
       }
@@ -1926,44 +2063,6 @@ export class Program extends DiagnosticEmitter {
     return null;
   }
 }
-
-/** Common result structure returned when calling any of the resolve functions on a {@link Program}. */
-export class ResolvedElement {
-
-  /** The target element, if a property or element access */
-  target: Element | null;
-  /** The target element's expression, if a property or element access. */
-  targetExpression: Expression | null;
-  /** The element being accessed. */
-  element: Element;
-
-  /** Clears the target and sets the resolved element. */
-  set(element: Element): this {
-    this.target = null;
-    this.targetExpression = null;
-    this.element = element;
-    return this;
-  }
-
-  /** Sets the resolved target in addition to the previously set element. */
-  withTarget(target: Element, targetExpression: Expression): this {
-    this.target = target;
-    this.targetExpression = targetExpression;
-    return this;
-  }
-
-  /** Tests if the target is a valid instance target. */
-  get isInstanceTarget(): bool {
-    return (
-      this.target != null &&
-      this.target.kind == ElementKind.CLASS &&
-      this.targetExpression != null
-    );
-  }
-}
-
-// Cached result structure instance
-var resolvedElement: ResolvedElement | null;
 
 /** Indicates the specific kind of an {@link Element}. */
 export enum ElementKind {
@@ -2070,7 +2169,9 @@ export enum CommonFlags {
   /** Has a constant value and is therefore inlined. */
   INLINED = 1 << 26,
   /** Is scoped. */
-  SCOPED = 1 << 27
+  SCOPED = 1 << 27,
+  /** Is a trampoline. */
+  TRAMPOLINE = 1 << 28
 }
 
 /** Base class of all program elements. */
@@ -2185,7 +2286,7 @@ export class VariableLikeElement extends Element {
   // kind varies
 
   /** Declaration reference. */
-  declaration: VariableLikeDeclarationStatement;
+  declaration: VariableLikeDeclarationStatement | null;
   /** Variable type. Is {@link Type.void} for type-inferred {@link Global}s before compilation. */
   type: Type;
   /** Constant value kind. */
@@ -2194,6 +2295,18 @@ export class VariableLikeElement extends Element {
   constantIntegerValue: I64;
   /** Constant float value, if applicable. */
   constantFloatValue: f64;
+
+  protected constructor(
+    program: Program,
+    simpleName: string,
+    internalName: string,
+    type: Type,
+    declaration: VariableLikeDeclarationStatement | null
+  ) {
+    super(program, simpleName, internalName);
+    this.type = type;
+    this.declaration = declaration;
+  }
 
   withConstantIntegerValue(lo: i32, hi: i32): this {
     this.constantValueKind = ConstantValueKind.INTEGER;
@@ -2219,12 +2332,11 @@ export class Global extends VariableLikeElement {
     program: Program,
     simpleName: string,
     internalName: string,
-    declaration: VariableLikeDeclarationStatement,
-    type: Type
+    type: Type,
+    declaration: VariableLikeDeclarationStatement | null
   ) {
-    super(program, simpleName, internalName);
-    this.declaration = declaration;
-    this.flags = declaration.flags;
+    super(program, simpleName, internalName, type, declaration);
+    this.flags = declaration ? declaration.flags : CommonFlags.NONE;
     this.type = type; // resolved later if `void`
   }
 }
@@ -2256,11 +2368,18 @@ export class Local extends VariableLikeElement {
 
   /** Local index. */
   index: i32;
+  /** Respective scoped global, if any. */
+  scopedGlobal: Global | null = null;
 
-  constructor(program: Program, simpleName: string, index: i32, type: Type) {
-    super(program, simpleName, simpleName);
+  constructor(
+    program: Program,
+    simpleName: string,
+    index: i32,
+    type: Type,
+    declaration: VariableLikeDeclarationStatement | null = null
+  ) {
+    super(program, simpleName, simpleName, type, declaration);
     this.index = index;
-    this.type = type;
   }
 }
 
@@ -2496,6 +2615,8 @@ export class Function extends Element {
   functionTableIndex: i32 = -1;
   /** Trampoline function for calling with omitted arguments. */
   trampoline: Function | null = null;
+  /** The outer scope, if a function expression. */
+  outerScope: Flow | null = null;
 
   private nextBreakId: i32 = 0;
   private breakStack: i32[] | null = null;
@@ -2512,7 +2633,7 @@ export class Function extends Element {
     this.signature = signature;
     this.memberOf = memberOf;
     this.flags = prototype.flags;
-    if (!(prototype.is(CommonFlags.BUILTIN) || prototype.is(CommonFlags.DECLARE))) {
+    if (!(prototype.is(CommonFlags.AMBIENT | CommonFlags.BUILTIN) || prototype.is(CommonFlags.DECLARE))) {
       let localIndex = 0;
       if (memberOf && memberOf.kind == ElementKind.CLASS) {
         assert(this.is(CommonFlags.INSTANCE));
@@ -2548,6 +2669,7 @@ export class Function extends Element {
             parameterName,
             localIndex++,
             parameterType
+            // FIXME: declaration?
           )
         );
       }
@@ -2556,7 +2678,7 @@ export class Function extends Element {
   }
 
   /** Adds a local of the specified type, with an optional name. */
-  addLocal(type: Type, name: string | null = null): Local {
+  addLocal(type: Type, name: string | null = null, declaration: VariableDeclaration | null = null): Local {
     // if it has a name, check previously as this method will throw otherwise
     var localIndex = this.signature.parameterTypes.length + this.additionalLocals.length;
     if (this.is(CommonFlags.INSTANCE)) ++localIndex;
@@ -2566,7 +2688,8 @@ export class Function extends Element {
         ? name
         : "var$" + localIndex.toString(10),
       localIndex,
-      type
+      type,
+      declaration
     );
     if (name) {
       if (this.locals.has(name)) throw new Error("duplicate local name");
@@ -2777,8 +2900,13 @@ export class Field extends VariableLikeElement {
   memoryOffset: i32 = -1;
 
   /** Constructs a new field. */
-  constructor(prototype: FieldPrototype, internalName: string, type: Type) {
-    super(prototype.program, prototype.simpleName, internalName);
+  constructor(
+    prototype: FieldPrototype,
+    internalName: string,
+    type: Type,
+    declaration: FieldDeclaration
+  ) {
+    super(prototype.program, prototype.simpleName, internalName, type, declaration);
     this.prototype = prototype;
     this.flags = prototype.flags;
     this.type = type;
@@ -2831,8 +2959,32 @@ export class ClassPrototype extends Element {
   fnIndexedSet: string | null = null;
   /** Overloaded concatenation method, if any. */
   fnConcat: string | null = null;
+  /** Overloaded subtraction method, if any. */
+  fnSubtract: string | null = null;
+  /** Overloaded multiply method, if any. */
+  fnMultiply: string | null = null;
+  /** Overloaded divide method, if any. */
+  fnDivide: string | null = null;
+  /** Overloaded fractional method, if any. */
+  fnFractional: string | null = null;
+  /** Overloaded bitwise and method, if any. */
+  fnBitwiseAnd: string | null = null;
+  /** Overloaded bitwise or method, if any. */
+  fnBitwiseOr: string | null = null;
+  /** Overloaded bitwise xor method, if any. */
+  fnBitwiseXor: string | null = null;
   /** Overloaded equality comparison method, if any. */
   fnEquals: string | null = null;
+  /** Overloaded non-equality comparison method, if any. */
+  fnNotEquals: string | null = null;
+  /** Overloaded greater comparison method, if any. */
+  fnGreaterThan: string | null = null;
+  /** Overloaded greater or equal comparison method, if any. */
+  fnGreaterThanEquals: string | null = null;
+  /** Overloaded less comparison method, if any. */
+  fnLessThan: string | null = null;
+  /** Overloaded less or equal comparison method, if any. */
+  fnLessThanEquals: string | null = null;
 
   constructor(
     program: Program,
@@ -2904,11 +3056,13 @@ export class ClassPrototype extends Element {
       throw new Error("type argument count mismatch");
     }
 
+    var simpleName = this.simpleName;
     var internalName = this.internalName;
     if (instanceKey.length) {
+      simpleName += "<" + instanceKey + ">";
       internalName += "<" + instanceKey + ">";
     }
-    instance = new Class(this, internalName, typeArguments, baseClass);
+    instance = new Class(this, simpleName, internalName, typeArguments, baseClass);
     instance.contextualTypeArguments = contextualTypeArguments;
     this.instances.set(instanceKey, instance);
 
@@ -2948,7 +3102,8 @@ export class ClassPrototype extends Element {
               let fieldInstance = new Field(
                 <FieldPrototype>member,
                 internalName + INSTANCE_DELIMITER + (<FieldPrototype>member).simpleName,
-                fieldType
+                fieldType,
+                fieldDeclaration
               );
               switch (fieldType.byteSize) { // align
                 case 1: break;
@@ -3012,7 +3167,7 @@ export class ClassPrototype extends Element {
         }
       }
     }
-    instance.currentMemoryOffset = memoryOffset; // sizeof<this>() is its byte size in memory
+    instance.currentMemoryOffset = memoryOffset; // offsetof<this>() is the class' byte size in memory
     return instance;
   }
 
@@ -3066,11 +3221,12 @@ export class Class extends Element {
   /** Constructs a new class. */
   constructor(
     prototype: ClassPrototype,
+    simpleName: string,
     internalName: string,
     typeArguments: Type[] | null = null,
     base: Class | null = null
   ) {
-    super(prototype.program, prototype.simpleName, internalName);
+    super(prototype.program, simpleName, internalName);
     this.prototype = prototype;
     this.flags = prototype.flags;
     this.typeArguments = typeArguments;
@@ -3119,8 +3275,26 @@ export class Class extends Element {
     return false;
   }
 
+  getIndexedGet(): FunctionPrototype | null {
+    var members = this.members;
+    var name = this.prototype.fnIndexedGet;
+    if (!members || name == null) return null;
+    var element = members.get(name);
+    if (!element || element.kind != ElementKind.FUNCTION_PROTOTYPE) return null;
+    return <FunctionPrototype>element;
+  }
+
+  getIndexedSet(): FunctionPrototype | null {
+    var members = this.members;
+    var name = this.prototype.fnIndexedSet;
+    if (!members || name == null) return null;
+    var element = members.get(name);
+    if (!element || element.kind != ElementKind.FUNCTION_PROTOTYPE) return null;
+    return <FunctionPrototype>element;
+  }
+
   toString(): string {
-    return this.prototype.simpleName;
+    return this.simpleName;
   }
 }
 
@@ -3156,11 +3330,12 @@ export class Interface extends Class {
   /** Constructs a new interface. */
   constructor(
     prototype: InterfacePrototype,
+    simpleName: string,
     internalName: string,
     typeArguments: Type[] = [],
     base: Interface | null = null
   ) {
-    super(prototype, internalName, typeArguments, base);
+    super(prototype, simpleName, internalName, typeArguments, base);
   }
 }
 
@@ -3207,6 +3382,8 @@ export class Flow {
   breakLabel: string | null;
   /** Scoped local variables. */
   scopedLocals: Map<string,Local> | null = null;
+  /** Scoped global variables. */
+  // scopedGlobals: Map<Local,Global> | null = null;
 
   /** Creates the parent flow of the specified function. */
   static create(currentFunction: Function): Flow {
@@ -3272,13 +3449,13 @@ export class Flow {
   }
 
   /** Adds a new scoped local of the specified name. */
-  addScopedLocal(name: string, type: Type, reportNode: Node): void {
+  addScopedLocal(type: Type, name: string, declaration: VariableDeclaration): void {
     var scopedLocal = this.currentFunction.getTempLocal(type);
     if (!this.scopedLocals) this.scopedLocals = new Map();
     else if (this.scopedLocals.has(name)) {
       this.currentFunction.program.error(
         DiagnosticCode.Duplicate_identifier_0,
-        reportNode.range
+        declaration.name.range
       );
       return;
     }
@@ -3296,6 +3473,27 @@ export class Flow {
     } while (current = current.parent);
     return this.currentFunction.locals.get(name);
   }
+
+  /** Adds a scoped global for an outer scoped local. */
+  // addScopedGlobal(scopedLocal: Local): Global {
+  //   var scopedGlobals = this.scopedGlobals;
+  //   var scopedGlobal: Global | null;
+  //   if (!scopedGlobals) {
+  //     this.scopedGlobals = scopedGlobals = new Map();
+  //   } else {
+  //     scopedGlobal = scopedGlobals.get(scopedLocal);
+  //     if (scopedGlobal) return scopedGlobal;
+  //   }
+  //   scopedGlobal = new Global(
+  //     scopedLocal.program,
+  //     scopedLocal.simpleName,
+  //     this.currentFunction.internalName + "~" + scopedLocal.internalName,
+  //     scopedLocal.type,
+  //     assert(scopedLocal.declaration)
+  //   );
+  //   scopedGlobals.set(scopedLocal, scopedGlobal);
+  //   return scopedGlobal;
+  // }
 
   /** Finalizes this flow. Must be the topmost parent flow of the function. */
   finalize(): void {

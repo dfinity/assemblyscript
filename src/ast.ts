@@ -216,10 +216,6 @@ export abstract class Node {
           stmt.decoratorKind = DecoratorKind.OFFSET;
           break;
         }
-        case "persistent": {
-          stmt.decoratorKind = DecoratorKind.PERSISTENT;
-          break;
-        }
         case "type": {
           stmt.decoratorKind = DecoratorKind.FUNCTION_TYPE;
           break;
@@ -542,7 +538,7 @@ export abstract class Node {
     identifier: IdentifierExpression,
     typeParameters: TypeParameterNode[],
     extendsType: TypeNode | null, // can't be a function
-    implementsTypes: TypeNode[], // can't be a function
+    implementsTypes: TypeNode[] | null, // can't be functions
     members: DeclarationStatement[],
     decorators: DecoratorNode[] | null,
     flags: CommonFlags,
@@ -554,7 +550,7 @@ export abstract class Node {
     stmt.name = identifier; identifier.parent = stmt;
     stmt.typeParameters = typeParameters; setParent(typeParameters, stmt);
     stmt.extendsType = extendsType; if (extendsType) extendsType.parent = stmt;
-    stmt.implementsTypes = implementsTypes; setParent(implementsTypes, stmt);
+    stmt.implementsTypes = implementsTypes; if (implementsTypes) setParent(implementsTypes, stmt);
     stmt.members = members; setParent(members, stmt);
     stmt.decorators = decorators; if (decorators) setParent(decorators, stmt);
     return stmt;
@@ -764,8 +760,10 @@ export abstract class Node {
 
   static createInterfaceDeclaration(
     name: IdentifierExpression,
+    typeParameters: TypeParameterNode[],
     extendsType: TypeNode | null, // can't be a function
     members: DeclarationStatement[],
+    decorators: DecoratorNode[] | null,
     flags: CommonFlags,
     range: Range
   ): InterfaceDeclaration {
@@ -773,8 +771,10 @@ export abstract class Node {
     stmt.range = range;
     stmt.flags = flags;
     stmt.name = name; name.parent = stmt;
+    stmt.typeParameters = typeParameters; if (typeParameters) setParent(typeParameters, stmt);
     stmt.extendsType = extendsType; if (extendsType) extendsType.parent = stmt;
     stmt.members = members; setParent(members, stmt);
+    stmt.decorators = decorators; if (decorators) setParent(decorators, stmt);
     return stmt;
   }
 
@@ -1055,6 +1055,8 @@ export class ParameterNode extends Node {
   type: CommonTypeNode;
   /** Initializer expression, if present. */
   initializer: Expression | null;
+  /** Implicit field declaration, if applicable. */
+  implicitFieldDeclaration: FieldDeclaration | null = null;
 }
 
 /** Represents a function signature. */
@@ -1078,7 +1080,6 @@ export enum DecoratorKind {
   OPERATOR,
   UNMANAGED,
   OFFSET,
-  PERSISTENT,
   FUNCTION_TYPE
 }
 
@@ -1495,10 +1496,10 @@ export class ClassDeclaration extends DeclarationStatement {
 
   /** Accepted type parameters. */
   typeParameters: TypeParameterNode[];
-  /** Base class type being extended. */
+  /** Base class type being extended, if any. */
   extendsType: TypeNode | null; // can't be a function
-  /** Interface types being implemented. */
-  implementsTypes: TypeNode[]; // can't be a function
+  /** Interface types being implemented, if any. */
+  implementsTypes: TypeNode[] | null; // can't be functions
   /** Class member declarations. */
   members: DeclarationStatement[];
 
@@ -1593,6 +1594,9 @@ export class ExpressionStatement extends Statement {
 /** Represents a field declaration within a `class`. */
 export class FieldDeclaration extends VariableLikeDeclarationStatement {
   kind = NodeKind.FIELDDECLARATION;
+
+  /** Parameter index within the constructor, if applicable. */
+  parameterIndex: i32 = -1;
 }
 
 /** Represents a `for` statement. */

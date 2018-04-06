@@ -784,13 +784,15 @@ export class ASTBuilder {
       this.visitTypeNode(extendsType);
     }
     var implementsTypes = node.implementsTypes;
-    var numImplementsTypes = implementsTypes.length;
-    if (numImplementsTypes) {
-      sb.push(" implements ");
-      this.visitTypeNode(implementsTypes[0]);
-      for (let i = 1; i < numImplementsTypes; ++i) {
-        sb.push(", ");
-        this.visitTypeNode(implementsTypes[i]);
+    if (implementsTypes) {
+      let numImplementsTypes = implementsTypes.length;
+      if (numImplementsTypes) {
+        sb.push(" implements ");
+        this.visitTypeNode(implementsTypes[0]);
+        for (let i = 1; i < numImplementsTypes; ++i) {
+          sb.push(", ");
+          this.visitTypeNode(implementsTypes[i]);
+        }
       }
     }
     var members = node.members;
@@ -799,8 +801,11 @@ export class ASTBuilder {
       sb.push(" {\n");
       let indentLevel = ++this.indentLevel;
       for (let i = 0, k = members.length; i < k; ++i) {
-        indent(sb, indentLevel);
-        this.visitNodeAndTerminate(members[i]);
+        let member = members[i];
+        if (member.kind != NodeKind.FIELDDECLARATION || (<FieldDeclaration>member).parameterIndex < 0) {
+          indent(sb, indentLevel);
+          this.visitNodeAndTerminate(member);
+        }
       }
       indent(sb, --this.indentLevel);
       sb.push("}");
@@ -1120,6 +1125,7 @@ export class ASTBuilder {
       sb.push(" extends ");
       this.visitTypeNode(extendsType);
     }
+    // must not have implementsTypes
     sb.push(" {\n");
     var indentLevel = ++this.indentLevel;
     var members = node.members;
@@ -1368,6 +1374,10 @@ export class ASTBuilder {
   serializeParameter(node: ParameterNode): void {
     var sb = this.sb;
     var kind = node.parameterKind;
+    var implicitFieldDeclaration = node.implicitFieldDeclaration;
+    if (implicitFieldDeclaration) {
+      this.serializeAccessModifiers(implicitFieldDeclaration);
+    }
     if (kind == ParameterKind.REST) {
       sb.push("...");
     }

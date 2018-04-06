@@ -135,6 +135,10 @@ declare namespace f32 {
   export const MAX_SAFE_INTEGER: f32;
   /** Difference between 1 and the smallest representable value greater than 1. */
   export const EPSILON: f32;
+  /** Returns the floating-point remainder of `x / y` (rounded towards zero). */
+  export function mod(x: f32, y: f32): f32;
+  /** Returns the floating-point remainder of `x / y` (rounded to nearest). */
+  export function rem(x: f32, y: f32): f32;
 }
 /** Converts any other numeric value to a 64-bit float. */
 declare function f64(value: i8 | i16 | i32 | i64 | isize | u8 | u16 | u32 | u64 | usize | bool | f32 | f64): f64;
@@ -219,8 +223,12 @@ declare const NaN: f32 | f64;
 declare const Infinity: f32 | f64;
 /** Heap base offset. */
 declare const HEAP_BASE: usize;
-/** Determines the byte size of the specified core or class type. Compiles to a constant. */
+/** Determines the byte size of the specified underlying core type. Compiles to a constant. */
 declare function sizeof<T>(): usize;
+/** Determines the alignment (log2) of the specified underlying core type. Compiles to a constant. */
+declare function alignof<T>(): usize;
+/** Determines the offset of the specified field within the given class type. Returns the class type's end offset if field name has been omitted. Compiles to a constant. */
+declare function offsetof<T>(fieldName?: string): usize;
 /** Changes the type of any value of `usize` kind to another one of `usize` kind. Useful for casting class instances to their pointer values and vice-versa. Beware that this is unsafe.*/
 declare function changetype<T>(value: any): T;
 /** Tests if a 32-bit or 64-bit float is `NaN`. */
@@ -247,6 +255,10 @@ declare function parseI32(str: string, radix?: i32): i32;
 declare function parseI64(str: string, radix?: i32): i64;
 /** Parses a string to a 64-bit float. */
 declare function parseFloat(str: string): f64;
+/** Returns the 64-bit floating-point remainder of `x/y`. */
+declare function fmod(x: f64, y: f64): f64;
+/** Returns the 32-bit floating-point remainder of `x/y`. */
+declare function fmodf(x: f32, y: f32): f32;
 
 // Standard library
 
@@ -260,6 +272,17 @@ declare class ArrayBuffer {
   slice(begin?: i32, end?: i32): ArrayBuffer;
 }
 
+/** Interface for a typed view on an array buffer. */
+declare interface ArrayBufferView<T> {
+  [key: number]: T;
+  /** The {@link ArrayBuffer} referenced by this view. */
+  readonly buffer: ArrayBuffer;
+  /** The offset in bytes from the start of the referenced {@link ArrayBuffer}. */
+  readonly byteOffset: i32;
+  /** The length in bytes from the start of the referenced {@link ArrayBuffer}. */
+  readonly byteLength: i32;
+}
+
 /** Class representing a sequence of values of type `T`. */
 declare class Array<T> {
   [key: number]: T;
@@ -267,16 +290,21 @@ declare class Array<T> {
   length: i32;
   /** Constructs a new array. */
   constructor(capacity?: i32);
+  every(callbackfn: (element: T, index: i32, array?: Array<T>) => bool): bool;
+  findIndex(predicate: (element: T, index: i32, array?: Array<T>) => bool): i32;
   includes(searchElement: T, fromIndex?: i32): bool;
   indexOf(searchElement: T, fromIndex?: i32): i32;
   lastIndexOf(searchElement: T, fromIndex?: i32): i32;
   push(element: T): void;
   pop(): T;
+  reduce<U>(callbackfn: (previousValue: U, currentValue: T, currentIndex: i32, array: Array<T>) => U, initialValue: U): U;
   shift(): T;
+  some(callbackfn: (element: T, index: i32, array?: Array<T>) => bool): bool;
   unshift(element: T): i32;
   slice(from: i32, to?: i32): T[];
   splice(start: i32, deleteCount?: i32): void;
   reverse(): T[];
+  sort(comparator?: (a: T, b: T) => i32): T[];
 }
 
 /** Class representing a C-like array of values of type `T` with limited capabilities. */
@@ -342,6 +370,115 @@ declare class Set<T> {
   delete(value: T): bool;
   clear(): void;
 }
+
+interface IMath<T> {
+  /** The base of natural logarithms, e, approximately 2.718. */
+  readonly E: T;
+  /** The natural logarithm of 2, approximately 0.693. */
+  readonly LN2: T;
+  /** The natural logarithm of 10, approximately 2.302. */
+  readonly LN10: T;
+  /** The base 2 logarithm of e, approximately 1.442. */
+  readonly LOG2E: T;
+  /** The base 10 logarithm of e, approximately 0.434. */
+  readonly LOG10E: T;
+  /** The ratio of the circumference of a circle to its diameter, approximately 3.14159. */
+  readonly PI: T;
+  /** The square root of 1/2, approximately 0.707. */
+  readonly SQRT1_2: T;
+  /** The square root of 2, approximately 1.414. */
+  readonly SQRT2: T;
+  /** Returns the absolute value of `x`. */
+  abs(x: T): T;
+  /** Returns the arccosine (in radians) of `x`. */
+  acos(x: T): T;
+  /** Returns the hyperbolic arc-cosine of `x`. */
+  acosh(x: T): T;
+  /** Returns the arcsine (in radians) of `x` */
+  asin(x: T): T;
+  /** Returns the hyperbolic arcsine of `x`. */
+  asinh(x: T): T;
+  /** Returns the arctangent (in radians) of `x`. */
+  atan(x: T): T;
+  /** Returns the arctangent of the quotient of its arguments. */
+  atan2(y: T, x: T): T;
+  /** Returns the hyperbolic arctangent of `x`. */
+  atanh(x: T): T;
+  /** Returns the cube root of `x`. */
+  cbrt(x: T): T;
+  /** Returns the smallest integer greater than or equal to `x`. */
+  ceil(x: T): T;
+  /** Returns the number of leading zero bits in the 32-bit binary representation of `x`. */
+  clz32(x: T): T;
+  /** Returns the cosine (in radians) of `x`. */
+  cos(x: T): T;
+  /** Returns the hyperbolic cosine of `x`. */
+  cosh(x: T): T;
+  /** Returns e to the power of `x`. */
+  exp(x: T): T;
+  /** Returns e to the power of `x`, minus 1. */
+  expm1(x: T): T;
+  /** Returns the largest integer less than or equal to `x`. */
+  floor(x: T): T;
+  /** Returns the nearest 32-bit single precision float representation of `x`. */
+  fround(x: T): f32;
+  /** Returns the square root of the sum of squares of its arguments. */
+  hypot(value1: T, value2: T): T; // TODO: rest
+  /** Returns the result of the C-like 32-bit multiplication of `a` and `b`. */
+  imul(a: T, b: T): T;
+  /** Returns the natural logarithm (base e) of `x`. */
+  log(x: T): T;
+  /** Returns the base 10 logarithm of `x`. */
+  log10(x: T): T;
+  /** Returns the natural logarithm (base e) of 1 + `x`. */
+  log1p(x: T): T;
+  /** Returns the base 2 logarithm of `x`. */
+  log2(x: T): T;
+  /** Returns the largest-valued number of its arguments. */
+  max(value1: T, value2: T): T; // TODO: rest
+  /** Returns the lowest-valued number of its arguments. */
+  min(value1: T, value2: T): T; // TODO: rest
+  /** Returns `base` to the power of `exponent`. */
+  pow(base: T, exponent: T): T;
+  /** Returns a pseudo-random number in the range from 0.0 inclusive up to but not including 1.0. */
+  random(): T;
+  /** Returns the value of `x` rounded to the nearest integer. */
+  round(x: T): T;
+  /** Returns the sign of `x`, indicating whether the number is positive, negative or zero. */
+  sign(x: T): T;
+  /** Returns the sine of `x`. */
+  sin(x: T): T;
+  /** Returns the hyperbolic sine of `x`. */
+  sinh(x: T): T;
+  /** Returns the square root of `x`. */
+  sqrt(x: T): T;
+  /** Returns the tangent of `x`. */
+  tan(x: T): T;
+  /** Returns the hyperbolic tangent of `x`. */
+  tanh(x: T): T;
+  /** Returns the integer part of `x` by removing any fractional digits. */
+  trunc(x: T): T;
+}
+
+interface INativeMath<T> extends IMath<T> {
+  /** Seeds the random number generator. */
+  seedRandom(value: i64): void;
+  /** Returns the floating-point remainder of `x / y` (rounded towards zero). */
+  mod(x: T, y: T): T;
+  /** Returns the floating-point remainder of `x / y` (rounded to nearest). */
+  rem(x: T, y: T): T;
+}
+
+/** Double precision math imported from JavaScript. */
+declare const JSMath: IMath<f64>;
+/** Double precision math implemented natively. */
+declare const NativeMath: INativeMath<f64>;
+/** Single precision math implemented natively. */
+declare const NativeMathf: INativeMath<f32>;
+/** Alias of {@link NativeMath} or {@link JSMath} respectively. Defaults to `NativeMath`. */
+declare const Math: IMath<f64>;
+/** Alias of {@link NativeMathf} or {@link JSMath} respectively. Defaults to `NativeMathf`. */
+declare const Mathf: IMath<f32>;
 
 // Internal decorators
 

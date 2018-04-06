@@ -16,10 +16,10 @@
 // FL: first level, SL: second level, AL: alignment, SB: small block
 
 import {
-  BITS as AL_BITS,
-  SIZE as AL_SIZE,
-  MASK as AL_MASK
-} from "./common/alignment";
+  AL_BITS,
+  AL_SIZE,
+  AL_MASK
+} from "./common";
 
 const SL_BITS: u32 = 5;
 const SL_SIZE: usize = 1 << <usize>SL_BITS;
@@ -457,7 +457,8 @@ export function allocate_memory(size: usize): usize {
 
   // search for a suitable block
   var data: usize = 0;
-  if (size && size < Block.MAX_SIZE) {
+  if (size && size <= Block.MAX_SIZE) {
+    // 32-bit MAX_SIZE is 1 << 30 and itself aligned, hence the following can't overflow MAX_SIZE
     size = max<usize>((size + AL_MASK) & ~AL_MASK, Block.MIN_SIZE);
 
     let block = root.search(size);

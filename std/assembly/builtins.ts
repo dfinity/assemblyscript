@@ -38,7 +38,7 @@ export declare function floor<T>(value: T): T;
 
 export declare function copysign<T>(left: T, right: T): T;
 
-export declare function nearest<T>(left: T, right: T): T;
+export declare function nearest<T>(value: T): T;
 
 export declare function reinterpret<T>(value: void): T;
 
@@ -50,7 +50,11 @@ export declare function load<T>(offset: usize, constantOffset?: usize): T;
 
 export declare function store<T>(offset: usize, value: void, constantOffset?: usize): T;
 
-export declare function sizeof<T>(): usize;
+export declare function sizeof<T>(): usize; // | u32 / u64
+
+export declare function alignof<T>(): usize; // | u32 / u64
+
+export declare function offsetof<T>(fieldName?: string): usize; // | u32 / u64
 
 export declare function select<T>(ifTrue: T, ifFalse: T, condition: bool): T;
 
@@ -78,25 +82,25 @@ export declare function abort(
 export declare function i8(value: void): i8;
 export namespace i8 {
   export const MIN_VALUE: i8 = -128;
-  export const MAX_VALUE: i8 = 127;
+  export const MAX_VALUE: i8 =  127;
 }
 
 export declare function i16(value: void): i16;
 export namespace i16 {
   export const MIN_VALUE: i16 = -32768;
-  export const MAX_VALUE: i16 = 32767;
+  export const MAX_VALUE: i16 =  32767;
 }
 
 export declare function i32(value: void): i32;
 export namespace i32 {
   export const MIN_VALUE: i32 = -2147483648;
-  export const MAX_VALUE: i32 = 2147483647;
+  export const MAX_VALUE: i32 =  2147483647;
 }
 
 export declare function i64(value: void): i64;
 export namespace i64 {
   export const MIN_VALUE: i64 = -9223372036854775808;
-  export const MAX_VALUE: i64 = 9223372036854775807;
+  export const MAX_VALUE: i64 =  9223372036854775807;
 }
 
 export declare function isize(value: void): isize;
@@ -149,22 +153,22 @@ export namespace bool {
 
 export declare function f32(value: void): f32;
 export namespace f32 {
-  export const MIN_VALUE: f32 = -3.40282347e+38;
-  export const MAX_VALUE: f32 = 3.40282347e+38;
-  export const MIN_POSITIVE_VALUE: f32 = 1.175494351e-38;
+  export const MIN_VALUE = reinterpret<f32>(0xFF7FFFFF); // -0x1.fffffep+127f
+  export const MAX_VALUE = reinterpret<f32>(0x7F7FFFFF); //  0x1.fffffep+127f
+  export const MIN_POSITIVE_VALUE = reinterpret<f32>(0x00800000); // 0x1p-126f
   export const MIN_SAFE_INTEGER: f32 = -16777215;
-  export const MAX_SAFE_INTEGER: f32 = 16777215;
-  export const EPSILON: f32 = 1.19209290e-07;
+  export const MAX_SAFE_INTEGER: f32 =  16777215;
+  export const EPSILON = reinterpret<f32>(0x34000000); // 0x1p-23f
 }
 
 export declare function f64(value: void): f64;
 export namespace f64 {
-  export const MIN_VALUE: f64 = -1.7976931348623157e+308;
-  export const MAX_VALUE: f64 = 1.7976931348623157e+308;
-  export const MIN_POSITIVE_VALUE: f64 = 2.2250738585072014e-308;
+  export const MIN_VALUE = reinterpret<f64>(0xFFEFFFFFFFFFFFFF); // -0x1.fffffffffffffp+1023
+  export const MAX_VALUE = reinterpret<f64>(0x7FEFFFFFFFFFFFFF); //  0x1.fffffffffffffp+1023
+  export const MIN_POSITIVE_VALUE = reinterpret<f64>(0x0010000000000000); // 0x1p-1022
   export const MIN_SAFE_INTEGER: f64 = -9007199254740991;
-  export const MAX_SAFE_INTEGER: f64 = 9007199254740991;
-  export const EPSILON: f64 = 2.2204460492503131e-16;
+  export const MAX_SAFE_INTEGER: f64 =  9007199254740991;
+  export const EPSILON = reinterpret<f64>(0x3CB0000000000000); // 0x1p-52
 }
 
 export declare const HEAP_BASE: usize;
