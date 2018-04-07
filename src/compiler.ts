@@ -46,10 +46,10 @@ import {
   FlowFlags,
   CommonFlags,
   ConstantValueKind,
+  Flow,
 
   PATH_DELIMITER,
-  LIBRARY_PREFIX,
-  Flow
+  INNER_DELIMITER
 } from "./program";
 
 import {
@@ -223,8 +223,6 @@ export class Compiler extends DiagnosticEmitter {
   functionTable: Function[] = new Array();
   /** Argument count helper global. */
   argumentCountRef: GlobalRef = 0;
-  /** Already processed file names. */
-  files: Set<string> = new Set();
 
   /** Compiles a {@link Program} to a {@link Module} using the specified options. */
   static compile(program: Program, options: Options | null = null): Module {
@@ -275,16 +273,14 @@ export class Compiler extends DiagnosticEmitter {
     var startFunctionBody = this.startFunctionBody;
     if (startFunctionBody.length) {
       let typeRef = this.ensureFunctionType(startFunctionInstance.signature);
-      let funcRef: FunctionRef;
-      module.setStart(
-        funcRef = module.addFunction(
-          startFunctionInstance.internalName,
-          typeRef,
-          typesToNativeTypes(startFunctionInstance.additionalLocals),
-          module.createBlock(null, startFunctionBody)
-        )
+      let funcRef = module.addFunction(
+        startFunctionInstance.internalName,
+        typeRef,
+        typesToNativeTypes(startFunctionInstance.additionalLocals),
+        module.createBlock(null, startFunctionBody)
       );
       startFunctionInstance.finalize(module, funcRef);
+      module.setStart(funcRef);
     }
 
     // set up static memory segments and the heap base pointer
@@ -322,13 +318,12 @@ export class Compiler extends DiagnosticEmitter {
     }
 
     // import memory if requested
-    if (options.importMemory) {
-      module.addMemoryImport("0", "env", "memory");
-    }
+    if (options.importMemory) module.addMemoryImport("0", "env", "memory");
 
     // set up function table
     var functionTable = this.functionTable;
     var functionTableSize = functionTable.length;
+    var functionTableExported = false;
     if (functionTableSize) {
       let entries = new Array<FunctionRef>(functionTableSize);
       for (let i = 0; i < functionTableSize; ++i) {
@@ -336,12 +331,13 @@ export class Compiler extends DiagnosticEmitter {
       }
       module.setFunctionTable(entries);
       module.addTableExport("0", "table");
+      functionTableExported = true;
     }
 
     // import table if requested
     if (options.importTable) {
       module.addTableImport("0", "env", "table");
-      if (!functionTableSize) module.addTableExport("0", "table");
+      if (!functionTableExported) module.addTableExport("0", "table");
     }
 
     return module;
@@ -350,49 +346,20 @@ export class Compiler extends DiagnosticEmitter {
   // sources
 
   compileSourceByPath(normalizedPathWithoutExtension: string, reportNode: Node): void {
-    var sources = this.program.sources;
-
-    // try file.ts
-    var expected = normalizedPathWithoutExtension + ".ts";
-    for (let i = 0, k = sources.length; i < k; ++i) {
-      let source = sources[i];
-      if (source.normalizedPath == expected) {
-        this.compileSource(source);
-        return;
-      }
+    var source = this.program.lookupSourceByPath(normalizedPathWithoutExtension);
+    if (!source) {
+      this.error(
+        DiagnosticCode.File_0_not_found,
+        reportNode.range, normalizedPathWithoutExtension
+      );
+      return;
     }
-
-    // try file/index.ts
-    expected = normalizedPathWithoutExtension + "/index.ts";
-    for (let i = 0, k = sources.length; i < k; ++i) {
-      let source = sources[i];
-      if (source.normalizedPath == expected) {
-        this.compileSource(source);
-        return;
-      }
-    }
-
-    // try ~lib/file.ts
-    expected = LIBRARY_PREFIX + normalizedPathWithoutExtension + ".ts";
-    for (let i = 0, k = sources.length; i < k; ++i) {
-      let source = sources[i];
-      if (source.normalizedPath == expected) {
-        this.compileSource(source);
-        return;
-      }
-    }
-
-    this.error(
-      DiagnosticCode.File_0_not_found,
-      reportNode.range, normalizedPathWithoutExtension
-    );
+    this.compileSource(source);
   }
 
   compileSource(source: Source): void {
-    var files = this.files;
-    var normalizedPath = source.normalizedPath;
-    if (files.has(normalizedPath)) return;
-    files.add(normalizedPath);
+     if (source.is(CommonFlags.COMPILED)) return;
+    source.set(CommonFlags.COMPILED);
 
     // compile top-level statements
     var noTreeShaking = this.options.noTreeShaking;
@@ -1304,11 +1271,11 @@ export class Compiler extends DiagnosticEmitter {
         // otherwise fall-through
       }
       default: {
-        assert(false);
         this.error(
           DiagnosticCode.Operation_not_supported,
           statement.range
         );
+        assert(false);
         expr = module.createUnreachable();
         break;
       }
@@ -4171,7 +4138,15 @@ export class Compiler extends DiagnosticEmitter {
         }
       }
       case ElementKind.FIELD: {
-        if ((<Field>target).is(CommonFlags.READONLY)) {
+        const declaration = (<Field>target).declaration;
+        if (
+          (<Field>target).is(CommonFlags.READONLY) &&
+          !(
+            this.currentFunction.is(CommonFlags.CONSTRUCTOR) ||
+            declaration == null ||
+            declaration.initializer != null
+          )
+        ) {
           this.error(
             DiagnosticCode.Cannot_assign_to_0_because_it_is_a_constant_or_a_read_only_property,
             expression.range, (<Field>target).internalName
@@ -4873,7 +4848,7 @@ export class Compiler extends DiagnosticEmitter {
     var prototype = new FunctionPrototype(
       this.program,
       simpleName,
-      currentFunction.internalName + "~" + simpleName,
+      currentFunction.internalName + INNER_DELIMITER + simpleName,
       declaration
     );
     var instance = this.compileFunctionUsingTypeArguments(
@@ -5395,7 +5370,13 @@ export class Compiler extends DiagnosticEmitter {
     if (!classInstance) return module.createUnreachable();
 
     var expr: ExpressionRef;
+
+    // traverse to the first matching constructor
+    var currentClassInstance: Class | null = classInstance;
     var constructorInstance = classInstance.constructorInstance;
+    while (!constructorInstance && (currentClassInstance = classInstance.base)) {
+      constructorInstance = currentClassInstance.constructorInstance;
+    }
 
     // if a constructor is present, call it with a zero `this`
     if (constructorInstance) {
