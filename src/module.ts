@@ -656,7 +656,9 @@ export class Module {
     if (customType) {
       this.customTypeMap.set(customType, (this.customTypeMap.get(customType) || []).concat([this.funcsCount]));
     }
-    this.funcsCount++;
+    if (name !== "__precompute") {
+      this.funcsCount++;
+    }
     try {
       return _BinaryenAddFunction(this.ref, cStr, type, cArr, varTypes ? varTypes.length : 0, body);
     } finally {
