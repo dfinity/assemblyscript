@@ -216,6 +216,10 @@ export abstract class Node {
           stmt.decoratorKind = DecoratorKind.OFFSET;
           break;
         }
+        case "persistent": {
+          stmt.decoratorKind = DecoratorKind.PERSISTENT;
+          break;
+        }
         case "type": {
           stmt.decoratorKind = DecoratorKind.FUNCTION_TYPE;
           break;
@@ -1080,6 +1084,7 @@ export enum DecoratorKind {
   OPERATOR,
   UNMANAGED,
   OFFSET,
+  PERSISTENT,
   FUNCTION_TYPE
 }
 

@@ -244,6 +244,8 @@ export class Module {
 
   ref: ModuleRef;
   out: usize;
+  globalsCount: i32 = 0;
+  persistentGlobals: Map<i32, string> = new Map();
   funcsCount: i32 = 0;
   customTypeMap: Map<string, i32[]> = new Map();
 
@@ -634,9 +636,14 @@ export class Module {
     name: string,
     type: NativeType,
     mutable: bool,
-    initializer: ExpressionRef
+    initializer: ExpressionRef,
+    persistentType: string | null = null
   ): GlobalRef {
     var cStr = allocString(name);
+    if (persistentType) {
+      this.persistentGlobals.set(this.globalsCount, persistentType);
+    }
+    this.globalsCount++;
     try {
       return _BinaryenAddGlobal(this.ref, cStr, type, mutable ? 1 : 0, initializer);
     } finally {
@@ -918,11 +925,23 @@ export class Module {
   }
 
   toBinary(sourceMapUrl: string | null): BinaryModule {
-    // Primea custom section - func types, etc
+    // Primea custom section - persistent globals, func types, etc
     let customJSON: {
+      persist?: Array<any>;
       types?: Array<any>;
       typeMap?: Array<any>;
     } = {};
+
+    if (this.persistentGlobals.size > 0) {
+      customJSON.persist = [];
+      for (let index of this.persistentGlobals.keys()) {
+        customJSON.persist.push({
+          form: "global",
+          index,
+          type: this.persistentGlobals.get(index)
+        });
+      }
+    }
 
     if (this.customTypeMap.size > 0) {
       customJSON.types = [];

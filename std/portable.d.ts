@@ -383,5 +383,5 @@ declare const JSMath: IMath;
 
 declare namespace console {
   /** @deprecated */
-  function log(message: string): void;
+  function log(message: any): void;
 }

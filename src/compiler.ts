@@ -569,9 +569,16 @@ export class Compiler extends DiagnosticEmitter {
     }
 
     var internalName = global.internalName;
+    let persistentType
+    if (declaration) {
+      const persistentDecorator = getFirstDecorator("persistent", declaration.decorators);
+      if (persistentDecorator != null && persistentDecorator.arguments && persistentDecorator.arguments.length > 0) {
+        persistentType = (persistentDecorator.arguments[0] as IdentifierExpression).text;
+      }
+    }
 
     if (initializeInStart) { // initialize to mutable zero and set the actual value in start
-      module.addGlobal(internalName, nativeType, true, global.type.toNativeZero(module));
+      module.addGlobal(internalName, nativeType, true, global.type.toNativeZero(module), persistentType);
       this.startFunctionBody.push(module.createSetGlobal(internalName, initExpr));
 
     } else { // compile as-is
@@ -616,7 +623,7 @@ export class Compiler extends DiagnosticEmitter {
         global.set(CommonFlags.INLINED); // inline the value from now on
         if (declaration) {
           if (declaration.isTopLevel) {    // but keep the element as it might be re-exported
-            module.addGlobal(internalName, nativeType, false, initExpr);
+            module.addGlobal(internalName, nativeType, false, initExpr, persistentType);
           }
           if (declaration.range.source.isEntry && declaration.isTopLevelExport) {
             module.addGlobalExport(global.internalName, declaration.programLevelInternalName);
@@ -626,7 +633,7 @@ export class Compiler extends DiagnosticEmitter {
         }
 
       } else /* mutable */ {
-        module.addGlobal(internalName, nativeType, !isConstant, initExpr);
+        module.addGlobal(internalName, nativeType, !isConstant, initExpr, persistentType);
       }
     }
     return true;

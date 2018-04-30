@@ -16,7 +16,7 @@
     "glob": "^7.1.2",
     "long": "^4.0.0",
     "minimist": "^1.2.0",
-    "primea-annotations": "0.0.1",
+    "primea-annotations": "0.0.6",
     "ts-node": "^5.0.1"
   },
   "devDependencies": {
