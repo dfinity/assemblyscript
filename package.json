@@ -14,7 +14,7 @@
     "binaryen": "44.0.0-nightly.20180309",
     "glob": "^7.1.2",
     "long": "^4.0.0",
-    "minimist": "^1.2.0",
+    "minimist": "^1.2.3",
     "ts-node": "^5.0.1"
   },
   "devDependencies": {
